@@ -193,6 +193,48 @@ ENV U2NET_HOME=/models
 - Gradio APIから画像推論を実行できる
 - FastAPIへcurlで画像を送信し、PNG形式の推論結果を取得できる
 
+## 動作スクリーンショット
+
+### Gradio GUI
+
+入力画像から背景を削除した結果です。
+
+![Gradio GUIでの推論結果](docs/images/gradio-gui.png)
+
+### GPU動作確認
+
+`CUDAExecutionProvider`が有効になっていることを確認しました。
+
+![GPU動作確認](docs/images/gpu-health.png)
+
+### FastAPIによる推論
+
+独立したFastAPIエンドポイントへ`curl`で画像を送信し、推論結果を取得しました。
+
+![FastAPI curl実行結果](docs/images/fastapi-curl.png)
+
+### Gradio APIによる推論
+
+GradioのAPIエンドポイントから推論結果が生成されることを確認しました。
+
+![Gradio API実行結果](docs/images/gradio-api.png)
+
+## 作業時間・難易度・感想
+
+- 作業時間：約5時間
+  - WSL2、Docker、FastAPIなどの事前学習時間は含めていません。
+  - VS Codeの初回セットアップ、実装、動作確認、GitHubへの公開作業を含みます。
+
+- 難易度：
+  - LLMの支援を受けながら手順を進めるという点では、実装操作そのものはそれほど難しくありませんでした。
+  - 一方で、Docker、CUDA、ONNX Runtime、FastAPI、Gradioの関係を含め、技術内容を自力で完全に説明・判断する難易度は高いと感じました。
+
+- 感想：
+  - 全体の仕組みを大まかに理解した後は、LLMの指示に沿って実装と検証を進めることで、短時間で動作する環境を構築できました。
+  - 特に、CUDAとONNX Runtimeのバージョン不一致など、複数の環境要因が関係する問題の切り分けにLLMが有効でした。
+  - 現時点では実装内容のすべてを完全に理解しているわけではないため、AIによる誤りや重要な設定ミスを、知識だけで自力で見抜くことは難しいと感じました。
+  - そのため、初心者でも確認できる具体的な合格条件を事前に決め、GPUの使用状況、APIの応答、生成画像などを一つずつ動作確認することが重要だと感じました。また、変更を小さく区切ってGitに保存し、自分では判断できない重要な箇所については経験者にレビューを依頼したいと考えています。
+
 ## 参考資料
 
 - [rembg](https://github.com/danielgatis/rembg)
