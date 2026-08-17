@@ -1,0 +1,14 @@
+.git
+.gitignore
+.vscode
+__pycache__
+*.pyc
+.venv
+venv
+.env
+outputs
+models
+README.md
+input.jpg
+output.png
+gradio-api-output.png

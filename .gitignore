@@ -1,0 +1,27 @@
+# Python temporary files
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local Python environments
+.venv/
+venv/
+
+# Secrets
+.env
+
+# Downloaded AI models
+.u2net/
+models/
+
+# Generated inference results
+outputs/
+
+# Editor and OS files
+.vscode/
+.DS_Store
+Thumbs.db
+# Local test images
+input.jpg
+output.png
+gradio-api-output.png
