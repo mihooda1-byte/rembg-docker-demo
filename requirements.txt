@@ -1,5 +1,5 @@
-rembg[gpu]==2.0.79
-onnxruntime-gpu==1.23.2
+rembg[cpu]==2.0.79
+onnxruntime==1.23.2
 fastapi==0.128.0
 uvicorn[standard]==0.40.0
 python-multipart==0.0.21

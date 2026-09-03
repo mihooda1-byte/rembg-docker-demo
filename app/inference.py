@@ -6,31 +6,22 @@ from rembg import new_session, remove
 
 
 MODEL_NAME = os.getenv("MODEL_NAME", "u2net")
-GPU_PROVIDER = "CUDAExecutionProvider"
 CPU_PROVIDER = "CPUExecutionProvider"
 
 
 @lru_cache(maxsize=1)
 def get_session():
-    """rembgのモデルをGPU優先で一度だけ読み込む。"""
-    available_providers = ort.get_available_providers()
-
-    if GPU_PROVIDER not in available_providers:
-        raise RuntimeError(
-            "CUDAExecutionProviderが利用できません。"
-            f" 利用可能な実行環境: {available_providers}"
-        )
-
+    """rembgのモデルをCPU用に一度だけ読み込む。"""
     session = new_session(
         MODEL_NAME,
-        providers=[GPU_PROVIDER, CPU_PROVIDER],
+        providers=[CPU_PROVIDER],
     )
 
     active_providers = session.inner_session.get_providers()
 
-    if GPU_PROVIDER not in active_providers:
+    if CPU_PROVIDER not in active_providers:
         raise RuntimeError(
-            "rembgの推論セッションでGPUが有効になっていません。"
+            "rembgの推論セッションでCPUが有効になっていません。"
             f" 有効な実行環境: {active_providers}"
         )
 
@@ -47,7 +38,7 @@ def remove_background_bytes(image_data: bytes) -> bytes:
 
 
 def get_runtime_info() -> dict:
-    """使用モデルとGPUの動作状況を返す。"""
+    """使用モデルとCPU providerの動作状況を返す。"""
     session = get_session()
 
     return {

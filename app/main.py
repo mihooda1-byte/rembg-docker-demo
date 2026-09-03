@@ -9,7 +9,7 @@ from app.inference import get_runtime_info, remove_background_bytes
 
 
 app = FastAPI(
-    title="rembg GPU API",
+    title="rembg CPU API",
     description="Dockerコンテナ上でU2-Netを実行する画像背景削除API",
     version="1.0.0",
 )
@@ -18,7 +18,7 @@ app = FastAPI(
 @app.get("/")
 def root():
     return {
-        "message": "rembg GPU API is running",
+        "message": "rembg CPU API is running",
         "fastapi_docs": "/docs",
         "gradio_gui": "/gradio",
     }
@@ -26,7 +26,11 @@ def root():
 
 @app.get("/health")
 def health():
-    """モデル名とGPUの使用状況を確認する。"""
+    """モデル名とCPU providerの使用状況を確認する。
+
+    初回アクセス時はモデル取得と推論sessionの初期化が
+    発生する可能性があるため、軽量なliveness checkではない。
+    """
     try:
         return {
             "status": "ok",
@@ -96,13 +100,13 @@ def run_gradio(image: Image.Image) -> Image.Image:
     return output_image
 
 
-with gr.Blocks(title="rembg GPU Demo") as gradio_demo:
+with gr.Blocks(title="rembg CPU Demo") as gradio_demo:
     gr.Markdown(
         """
-        # rembg（U2-Net）GPUデモ
+        # rembg（U2-Net）CPUデモ
 
         画像を選択して「背景を削除」を押してください。
-        推論はDockerコンテナ内のNVIDIA GPUで実行されます。
+        推論はDockerコンテナ内のCPUで実行されます。
         """
     )
 

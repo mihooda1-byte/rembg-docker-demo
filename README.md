@@ -1,6 +1,6 @@
-# rembg GPU Docker Demo
+# rembg CPU Docker Demo
 
-学習済みモデル rembg（U2-Net）をDockerコンテナ上で動かし、画像の背景を削除するデモ環境です。
+学習済みモデルrembg（U2-Net）をCPUだけで実行し、画像の背景を削除するDockerデモ環境です。NVIDIA GPU、CUDA、cuDNNは不要です。
 
 以下の3種類の方法から推論を実行できます。
 
@@ -8,19 +8,16 @@
 - GradioのAPI
 - Gradioとは独立したFastAPIの推論API
 
-推論にはNVIDIA GPUを使用します。
+## 想定環境
 
-## 動作確認環境
-
-- Windows
-- Docker Desktop（WSL2バックエンド）
-- NVIDIA GeForce RTX 3090（24GB）
-- NVIDIA CUDAコンテナ：12.6.3
+- Docker
 - Python 3.12
 - rembg：2.0.79
-- onnxruntime-gpu：1.23.2
+- onnxruntime：1.23.2
 - FastAPI：0.128.0
 - Gradio：6.2.0
+
+CPU版のbuild、推論、memory使用量、Docker image容量をローカルで確認済みです。以下の数値は会社PC上での単回測定による参考値であり、入力画像、Docker環境、測定タイミングにより変動します。
 
 ## ディレクトリ構成
 
@@ -40,47 +37,70 @@ rembg-docker-demo/
 ## 構成
 
 - `app/inference.py`
-  - rembgの推論セッションを作成します。
-  - `CUDAExecutionProvider`が使用されていることを確認します。
-  - 読み込んだモデルを再利用して画像の背景を削除します。
-
+  - rembgの推論sessionを作成します。
+  - `CPUExecutionProvider`だけを明示的に使用します。
+  - 読み込んだモデルをprocess内で再利用します。
 - `app/main.py`
-  - FastAPIのエンドポイントを提供します。
-  - GradioのGUIとAPIをFastAPI上にマウントします。
-
+  - FastAPIのendpointを提供します。
+  - GradioのGUIとAPIをFastAPI上にmountします。
+  - `/health`は初回アクセス時にモデル取得とsession初期化を伴う可能性があります。
 - `Dockerfile`
-  - CUDA、Python、rembgなどを含むDockerイメージを作成します。
+  - Python、CPU版ONNX Runtime、rembgなどを含むDocker imageを作成します。
+  - `PORT`環境変数を使用し、未設定時は8000で起動します。
+  - `U2NET_HOME=/tmp/rembg-models`をモデルcache pathとして使用します。
 
 ## Dockerイメージのビルド
 
-プロジェクトのルートディレクトリで実行します。
+projectのroot directoryで実行します。
 
 ```powershell
-docker build --progress=plain -t rembg-gpu-demo .
+docker build --progress=plain -t rembg-cpu-demo .
 ```
+
+HerokuおよびさくらAppRun向けには`linux/amd64` imageが必要か、各platformの現行仕様とbuild結果をdeployment前に確認してください。
 
 ## コンテナの起動
 
 ```powershell
-docker run --rm --gpus all -p 8000:8000 -v rembg-models:/models --name rembg-gpu rembg-gpu-demo
+docker run --rm `
+    -p 8000:8000 `
+    -e PORT=8000 `
+    -v rembg-models:/tmp/rembg-models `
+    --name rembg-cpu `
+    rembg-cpu-demo
 ```
 
-`rembg-models`というDockerボリュームを使用することで、ダウンロードしたU2-Netのモデルをコンテナ終了後も保持します。
+`rembg-models`というnamed volumeを`/tmp/rembg-models`へmountすることで、ダウンロードしたU2-Netモデルをcontainer終了後も再利用できます。
 
-初回推論時はモデルをダウンロードするため、少し時間がかかります。
+cache pathは`U2NET_HOME=/tmp/rembg-models`で、rembg 2.0.79が参照する環境変数と実コードの設定を一致させています。defaultの`/tmp/rembg-models`はDockerfileでroot所有directoryとして事前作成せず、実行時にrembgへ作成させるため、非root環境でも書き込めます。
+
+初回の推論または`/health`アクセスでは、約176 MBのU2-Netモデル取得と推論session初期化が発生する可能性があります。
+
+## ローカル実測の参考値
+
+以下は会社PC上での単回測定による参考値です。入力画像、Docker環境、測定タイミングにより変動します。
+
+- Docker image容量：967,299,564 bytes
+- U2-Netモデル容量：175,997,641 bytes
+- 初回`/health`：12.480440秒、モデル初期化peak memory：1.131 GiB
+- FastAPI背景除去API：0.391885秒、処理後memory：1.263 GiB
+- named volume cache再利用後の`/health`：0.667079秒
+- Gradio API：0.930153秒、処理後memory：1.392 GiB
+
+1 GB級の環境では現在構成のmemoryが不足する可能性が高いため、Herokuでは2 GB以上のdynoを候補にして実測が必要です。
 
 ## アクセス先
 
-コンテナ起動後、次のURLをブラウザで開きます。
+container起動後、次のURLを使用します。
 
 | 機能 | URL |
 |---|---|
 | トップページ | http://localhost:8000/ |
-| GPU動作確認 | http://localhost:8000/health |
+| CPU provider・モデル動作確認 | http://localhost:8000/health |
 | FastAPIドキュメント | http://localhost:8000/docs |
 | Gradio GUI | http://localhost:8000/gradio/ |
 
-## GPUの動作確認
+## CPU providerの動作確認
 
 PowerShellから次のコマンドを実行します。
 
@@ -89,24 +109,27 @@ Invoke-RestMethod http://localhost:8000/health |
     ConvertTo-Json -Depth 3
 ```
 
-正常にGPUが使用されている場合、実行結果の`active_providers`に以下が表示されます。
+正常時は`active_providers`に`CPUExecutionProvider`が表示されます。
 
 ```json
 [
-  "CUDAExecutionProvider",
   "CPUExecutionProvider"
 ]
 ```
 
+`/health`は`get_session()`を呼ぶため、軽量なliveness checkではありません。初回アクセスではモデル取得とsession初期化に伴って応答が遅くなり、network、disk、memoryも使用します。最初のPoCでは既存のendpointと挙動を維持します。
+
 ## Gradio GUIから推論する
 
-ブラウザで次のURLを開きます。
+browserで次のURLを開きます。
 
 ```text
 http://localhost:8000/gradio/
 ```
 
 画像を選択して「背景を削除」を押すと、背景を削除した画像が表示されます。
+
+現在のGradio既定動作では、GUIの出力はWEBPです。
 
 ## FastAPIから推論する
 
@@ -123,8 +146,6 @@ curl.exe -X POST `
 
 ## Gradio APIから推論する
 
-PythonからGradio APIを利用する例です。
-
 ```python
 from gradio_client import Client, handle_file
 
@@ -138,7 +159,9 @@ result = client.predict(
 print(result)
 ```
 
-利用可能なGradio APIを確認する場合は、次のように実行します。
+現在のGradio既定動作では、Gradio APIの出力もWEBPです。FastAPI背景除去APIとは異なり、PNG出力を保証しません。
+
+利用可能なGradio APIは次のコードで確認できます。
 
 ```python
 from gradio_client import Client
@@ -149,95 +172,53 @@ client.view_api()
 
 ## コンテナの停止
 
-コンテナを起動しているターミナルで`Ctrl + C`を押します。
-
-別のPowerShellから停止する場合は、次のコマンドを実行します。
+containerを起動しているterminalで`Ctrl + C`を押します。別のPowerShellから停止する場合は次を実行します。
 
 ```powershell
-docker stop rembg-gpu
+docker stop rembg-cpu
 ```
 
-## トラブルシューティング
+## Herokuで使用する場合
 
-### CUDAライブラリのバージョン不一致
+同じDocker imageをHeroku Container Runtimeで使う想定です。UvicornはHerokuが設定する`PORT`でlistenし、ローカルで`PORT`が未設定の場合は8000を使用します。
 
-以下のようなエラーが発生する場合があります。
+Herokuではcontainer filesystemが一時的でDocker volumeをmountできません。そのため、`/tmp/rembg-models`へ取得したモデルcacheはdynoのrestart・置換時に失われ、再取得が必要です。
 
-```text
-libcublasLt.so.13: cannot open shared object file
-```
+U2-Net、ONNX Runtime、FastAPI、Gradioを同じprocessで動かすため、小さいdynoではmemory不足になる可能性があります。特に1 GB級では現在構成が不足する可能性が高く、2 GB以上を候補にしてdeployment前に、起動直後、モデルload後、FastAPI推論時、Gradio推論時のmemoryを測定してください。
 
-これは、ONNX Runtimeが要求するCUDAのバージョンと、Dockerイメージ内のCUDAのバージョンが一致していない場合に発生します。
+secretsやHeroku API keyはDockerfile、Docker image、`.env`、Git履歴へ含めないでください。
 
-このプロジェクトでは、CUDA 12環境に合わせて以下のバージョンを固定しています。
+## さくらAppRunへ展開する場合
 
-```text
-onnxruntime-gpu==1.23.2
-```
+今回のimage容量は2 GiB未満でしたが、約176 MBのU2-Netモデルを一時領域256 MiBへ保存すると余裕は小さい点に注意が必要です。起動4分以内の条件も含め、package展開、temporary file、入力画像、出力画像を含めて別途検証が必要です。
 
-### モデルの保存先
+## 動作確認項目
 
-rembg 2.0.79では、モデルの保存先を次の環境変数で設定します。
+CPU版では以下を今後確認します。
 
-```dockerfile
-ENV U2NET_HOME=/models
-```
+- CUDA、cuDNN、NVIDIA libraryを含まずにbuildできる
+- `CPUExecutionProvider`だけでsessionが作成される
+- `/health`、`/docs`、`/gradio`が応答する
+- FastAPIからPNG形式の推論結果を取得できる
+- named volumeからモデルcacheを再利用できる
+- `PORT`未設定時は8000、設定時は指定portでlistenする
+- Docker imageの圧縮後・展開後容量
+- 起動直後、モデルload後、推論peak時のmemory使用量
 
-## 動作確認結果
+## GPU版での過去の確認記録
 
-以下を確認しました。
+以下は変更前のGPU版で確認された履歴であり、CPU版の動作確認結果ではありません。
 
-- DockerコンテナからNVIDIA GPUを利用できる
-- U2-Netの推論で`CUDAExecutionProvider`が有効になる
-- Gradio GUIから画像を入力して背景を削除できる
-- Gradio APIから画像推論を実行できる
-- FastAPIへcurlで画像を送信し、PNG形式の推論結果を取得できる
+- Gradio GUI、Gradio API、FastAPIから背景除去を実行
+- NVIDIA RTX 3090上で`CUDAExecutionProvider`を使用
+- FastAPIとGradioからPNG出力を確認
 
-## 動作スクリーンショット
-
-### Gradio GUI
-
-入力画像から背景を削除した結果です。
-
-![Gradio GUIでの推論結果](docs/images/gradio-gui.png)
-
-### GPU動作確認
-
-`CUDAExecutionProvider`が有効になっていることを確認しました。
-
-![GPU動作確認](docs/images/gpu-health.png)
-
-### FastAPIによる推論
-
-独立したFastAPIエンドポイントへ`curl`で画像を送信し、推論結果を取得しました。
-
-![FastAPI curl実行結果](docs/images/fastapi-curl.png)
-
-### Gradio APIによる推論
-
-GradioのAPIエンドポイントから推論結果が生成されることを確認しました。
-
-![Gradio API実行結果](docs/images/gradio-api.png)
-
-## 作業時間・難易度・感想
-
-- 作業時間：約5時間
-  - WSL2、Docker、FastAPIなどの事前学習時間は含めていません。
-  - VS Codeの初回セットアップ、実装、動作確認、GitHubへの公開作業を含みます。
-
-- 難易度：
-  - LLMの支援を受けながら手順を進めるという点では、実装操作そのものはそれほど難しくありませんでした。
-  - 一方で、Docker、CUDA、ONNX Runtime、FastAPI、Gradioの関係を含め、技術内容を自力で完全に説明・判断する難易度は高いと感じました。
-
-- 感想：
-  - 全体の仕組みを大まかに理解した後は、LLMの指示に沿って実装と検証を進めることで、短時間で動作する環境を構築できました。
-  - 特に、CUDAとONNX Runtimeのバージョン不一致など、複数の環境要因が関係する問題の切り分けにLLMが有効でした。
-  - 現時点では実装内容のすべてを完全に理解しているわけではないため、AIによる誤りや重要な設定ミスを、知識だけで自力で見抜くことは難しいと感じました。
-  - そのため、初心者でも確認できる具体的な合格条件を事前に決め、GPUの使用状況、APIの応答、生成画像などを一つずつ動作確認することが重要だと感じました。また、変更を小さく区切ってGitに保存し、自分では判断できない重要な箇所については経験者にレビューを依頼したいと考えています。
+既存の`docs/images/`以下のスクリーンショットもGPU版の履歴です。CPU版の検証後に、必要に応じてCPU版の記録へ更新します。
 
 ## 参考資料
 
 - [rembg](https://github.com/danielgatis/rembg)
 - [FastAPI](https://fastapi.tiangolo.com/)
 - [Gradio](https://www.gradio.app/)
-- [NVIDIA CUDA Containers](https://hub.docker.com/r/nvidia/cuda)
+- [Python Docker Official Image](https://hub.docker.com/_/python)
+- [Heroku Container Registry & Runtime](https://devcenter.heroku.com/articles/container-registry-and-runtime)
