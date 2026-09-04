@@ -1,12 +1,18 @@
 from io import BytesIO
+import os
 
-import gradio as gr
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import Response
 from PIL import Image, UnidentifiedImageError
 
 from app.inference import get_runtime_info, remove_background_bytes
 
+ENABLE_GRADIO = os.getenv("ENABLE_GRADIO", "true").lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 app = FastAPI(
     title="rembg CPU API",
@@ -84,62 +90,63 @@ async def remove_background(file: UploadFile = File(...)):
     )
 
 
-def run_gradio(image: Image.Image) -> Image.Image:
-    """Gradioの画面とGradio APIから使用する処理。"""
-    if image is None:
-        raise gr.Error("画像を選択してください。")
+if ENABLE_GRADIO:
+    import gradio as gr
 
-    input_buffer = BytesIO()
-    image.convert("RGB").save(input_buffer, format="PNG")
+    def run_gradio(image: Image.Image) -> Image.Image:
+        """Gradioの画面とGradio APIから使用する処理。"""
+        if image is None:
+            raise gr.Error("画像を選択してください。")
 
-    result = remove_background_bytes(input_buffer.getvalue())
+        input_buffer = BytesIO()
+        image.convert("RGB").save(input_buffer, format="PNG")
 
-    output_image = Image.open(BytesIO(result))
-    output_image.load()
+        result = remove_background_bytes(input_buffer.getvalue())
 
-    return output_image
+        output_image = Image.open(BytesIO(result))
+        output_image.load()
 
+        return output_image
 
-with gr.Blocks(title="rembg CPU Demo") as gradio_demo:
-    gr.Markdown(
-        """
-        # rembg（U2-Net）CPUデモ
+    with gr.Blocks(title="rembg CPU Demo") as gradio_demo:
+        gr.Markdown(
+            """
+            # rembg（U2-Net）CPUデモ
 
-        画像を選択して「背景を削除」を押してください。
-        推論はDockerコンテナ内のCPUで実行されます。
-        """
-    )
-
-    with gr.Row():
-        input_image = gr.Image(
-            type="pil",
-            label="入力画像",
-        )
-        output_image = gr.Image(
-            type="pil",
-            label="推論結果",
+            画像を選択して「背景を削除」を押してください。
+            推論はDockerコンテナ内のCPUで実行されます。
+            """
         )
 
-    run_button = gr.Button(
-        "背景を削除",
-        variant="primary",
-    )
-    clear_button = gr.ClearButton(
-        [input_image, output_image],
-        value="クリア",
-    )
+        with gr.Row():
+            input_image = gr.Image(
+                type="pil",
+                label="入力画像",
+            )
+            output_image = gr.Image(
+                type="pil",
+                label="推論結果",
+            )
 
-    run_button.click(
-        fn=run_gradio,
-        inputs=input_image,
-        outputs=output_image,
-        api_name="remove_background",
+        run_button = gr.Button(
+            "背景を削除",
+            variant="primary",
+        )
+        clear_button = gr.ClearButton(
+            [input_image, output_image],
+            value="クリア",
+        )
+
+        run_button.click(
+            fn=run_gradio,
+            inputs=input_image,
+            outputs=output_image,
+            api_name="remove_background",
+        )
+
+    app = gr.mount_gradio_app(
+        app,
+        gradio_demo,
+        path="/gradio",
+        max_file_size="20mb",
     )
-
-
-app = gr.mount_gradio_app(
-    app,
-    gradio_demo,
-    path="/gradio",
-    max_file_size="20mb",
-)

@@ -48,6 +48,10 @@ rembg-docker-demo/
   - Python、CPU版ONNX Runtime、rembgなどを含むDocker imageを作成します。
   - `PORT`環境変数を使用し、未設定時は8000で起動します。
   - `U2NET_HOME=/tmp/rembg-models`をモデルcache pathとして使用します。
+  - `MODEL_NAME`と`ENABLE_GRADIO`を環境変数で変更できます。
+
+`MODEL_NAME`のdefaultは`u2net`です。`MODEL_NAME=u2netp`を指定すると軽量モデルを使用できます。
+`ENABLE_GRADIO=true`が通常設定で、Gradio GUI/APIを有効にします。`ENABLE_GRADIO=false`ではGradioをimport・初期化・mountせず、FastAPIの`/health`、`/docs`、`POST /api/remove-background`だけを提供します。
 
 ## Dockerイメージのビルド
 
@@ -65,6 +69,8 @@ HerokuおよびさくらAppRun向けには`linux/amd64` imageが必要か、各p
 docker run --rm `
     -p 8000:8000 `
     -e PORT=8000 `
+  -e MODEL_NAME=u2net `
+  -e ENABLE_GRADIO=true `
     -v rembg-models:/tmp/rembg-models `
     --name rembg-cpu `
     rembg-cpu-demo
@@ -75,6 +81,39 @@ docker run --rm `
 cache pathは`U2NET_HOME=/tmp/rembg-models`で、rembg 2.0.79が参照する環境変数と実コードの設定を一致させています。defaultの`/tmp/rembg-models`はDockerfileでroot所有directoryとして事前作成せず、実行時にrembgへ作成させるため、非root環境でも書き込めます。
 
 初回の推論または`/health`アクセスでは、約176 MBのU2-Netモデル取得と推論session初期化が発生する可能性があります。
+
+Heroku Ecoなどのメモリ制限環境では、Gradioを無効化して軽量モデルを指定できます。
+
+```powershell
+docker run --rm `
+  -p 8000:8000 `
+  -e PORT=8000 `
+  -e MODEL_NAME=u2netp `
+  -e ENABLE_GRADIO=false `
+  -v rembg-models-api:/tmp/rembg-models `
+  --name rembg-cpu-api `
+  rembg-cpu-demo
+```
+
+この設定でも`/health`、`/docs`、`POST /api/remove-background`は利用できます。`/gradio/`は提供されません。通常設定では既存のGradio GUI/APIを利用できます。
+
+512 MB制限のDocker検証では、`--memory=512m`、`MODEL_NAME=u2netp`、`ENABLE_GRADIO=false`、専用named volume、host port `8010`を使用し、起動直後から2秒間隔で`GET /`を確認します。`/`が`200`になった後に`/docs`、`/health`、背景除去APIを各1回実行し、`docker stats`、`docker inspect`、Dockerログでpeak memory、`OOMKilled`、エラーを確認します。Gradioは無効化されるため、`/gradio/`の`404`も確認します。
+
+### Heroku Eco相当の512 MiBローカル検証結果
+
+- Docker memory limit：512 MiB
+- `MODEL_NAME=u2netp`
+- `ENABLE_GRADIO=false`
+- 起動時memory：463.2 MiB
+- `/health`後memory：483.6 MiB
+- `u2netp` model：約4.57 MB
+- FastAPI背景除去：3.46秒、HTTP 200、有効なPNG
+- `/docs`：200
+- `/gradio/`：404
+- `OOMKilled`：false
+- 停止後Exit code：0
+
+512 MiBで完走しましたが、上限の約94%を使用しており余裕が小さいため、Heroku上での実測が必要です。
 
 ## ローカル実測の参考値
 
