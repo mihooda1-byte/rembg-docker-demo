@@ -115,6 +115,27 @@ docker run --rm `
 
 512 MiBで完走しましたが、上限の約94%を使用しており余裕が小さいため、Heroku上での実測が必要です。
 
+## Heroku Eco実機検証結果
+
+- App：Heroku EU region、container stack
+- Dyno：Eco、512 MB
+- 設定：`MODEL_NAME=u2netp`、`ENABLE_GRADIO=false`
+- `/`：200
+- `/docs`：200
+- `/gradio/`：404（設定どおり無効）
+- `/health`：200
+- model：`u2netp`
+- active provider：`CPUExecutionProvider`
+- 背景除去API：200、約10.97秒
+- 入力・出力：1598×1538、出力は透明背景を含む有効なPNG
+- 推論後にHerokuログで`mem=703M (136.7%)`とR14を確認
+- Dynoは停止・再起動せず`up`を維持しましたが、Ecoの512 MB制限を超過したため安定運用には不適です。
+- 約30分の無通信で自動sleepを確認
+- sleepからの復帰は約56秒
+- 復帰を開始した最初の`GET /`は31.12秒後に503（H99）
+- その約25秒後にUvicorn起動完了、Dynoは`up`
+- 検証後は`web=0`へscale down済み
+
 ## ローカル実測の参考値
 
 以下は会社PC上での単回測定による参考値です。入力画像、Docker環境、測定タイミングにより変動します。
