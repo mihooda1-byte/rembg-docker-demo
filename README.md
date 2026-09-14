@@ -136,6 +136,29 @@ docker run --rm `
 - その約25秒後にUvicorn起動完了、Dynoは`up`
 - 検証後は`web=0`へscale down済み
 
+## Modal CPU Function検証結果
+
+ModalではFunction-only構成を使用し、公開endpointとVolumeは追加していません。設定は`u2netp`、CPU 2、memory 2048 MiB、`CPUExecutionProvider`、`max_containers=1`、`min_containers=0`、`scaledown_window=60`秒、`retries=0`です。
+
+warm検証では同一Functionプロセス内の再利用を確認しました。2回目のbackground processingは約0.66秒、remote callは約2.68秒で、比較した2出力のSHA-256は一致しました。
+
+90秒待機後の再検証では、実待機時間は90.003718195秒、CLI全体は289.15秒でした。
+
+| 計測項目 | 1回目 | 2回目 |
+| --- | ---: | ---: |
+| `app.inference` import | 82.749881850秒 | 97.660464091秒 |
+| session準備 | 0.514692841秒 | 0.435842464秒 |
+| background processing | 0.531684884秒 | 0.593174587秒 |
+| processing | 83.796707343秒 | 98.689885162秒 |
+| remote call | 90.193670073秒 | 103.974377792秒 |
+| peak RSS | 1,070,492 KiB | 1,052,028 KiB |
+
+2回目も`first_process_call=true`、`process_call_number=1`で、session cacheと一時モデルファイルは初期状態から始まり、モデル取得が再発しました。Functionのプロセス内状態と一時cacheの初期化は観測しましたが、hostnameとPIDは一致したため、実行環境の切り替わりやscale downは直接確認していません。cold側時間の大部分は`app.inference`のimportで、session準備は約0.4～0.6秒でした。この結果からモデル永続化Volumeによるcold時間短縮効果は小さいと判断し、現時点では追加していません。
+
+設定memoryとpeak RSSは別の指標です。ここでのRSSはFunctionプロセスの生存期間における高水位値であり、container全体のmemory使用量ではありません。実際の請求額は未確認です。検証後に公開endpointや永続Volumeは残していません。
+
+2出力はいずれも1598×1538の透過PNGです。2,457,724画素中327画素（約0.0133%）に差があり、各RGBAチャンネルの最大絶対差は1でした。実質的に同等ですが、完全な決定性は確認できず、差が生じた原因は断定していません。
+
 ## ローカル実測の参考値
 
 以下は会社PC上での単回測定による参考値です。入力画像、Docker環境、測定タイミングにより変動します。
